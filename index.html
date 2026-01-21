@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>RSVP Reader – Mobile</title>
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #000;
+  color: #fff;
+  -webkit-font-smoothing: antialiased;
+}
+
+.container {
+  padding: 16px;
+  max-width: 720px;
+  margin: auto;
+}
+
+h1 {
+  text-align: center;
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  text-align: center;
+  font-size: 14px;
+  opacity: 0.7;
+  margin-bottom: 16px;
+}
+
+.controls {
+  background: #111;
+  padding: 14px;
+  border-radius: 12px;
+  margin-bottom: 18px;
+}
+
+label {
+  font-size: 13px;
+  opacity: 0.8;
+  margin-bottom: 6px;
+  display: block;
+}
+
+textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 10px;
+  background: #1c1c1e;
+  color: #fff;
+  border-radius: 8px;
+  border: none;
+  margin-bottom: 12px;
+}
+
+input[type="file"] {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+input[type="range"] {
+  width: 100%;
+}
+
+.speed {
+  text-align: center;
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+button {
+  flex: 1;
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 10px;
+  border: none;
+}
+
+.primary { background: #0a84ff; color: #fff; }
+.secondary { background: #3a3a3c; color: #fff; }
+
+.reader {
+  display: none;
+  justify-content: center;
+  align-items: center;
+  min-height: 45vh;
+  font-size: 52px;
+  margin-top: 10px;
+}
+
+.reader.active { display: flex; }
+
+.word {
+  font-family: "Courier New", monospace;
+  letter-spacing: 3px;
+}
+
+.center {
+  color: #ff453a;
+  font-weight: 700;
+}
+
+.stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  opacity: 0.7;
+  margin-top: 8px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+  <h1>📖 RSVP Reader</h1>
+  <div class="subtitle">Optimized for iPhone · One word at a time</div>
+
+  <div class="controls">
+    <label>Upload (TXT / EPUB)</label>
+    <input type="file" id="file" accept=".txt,.epub">
+
+    <label>Or paste text</label>
+    <textarea id="text"></textarea>
+
+    <label>Speed</label>
+    <input type="range" id="speed" min="150" max="900" step="25" value="300">
+    <div class="speed" id="speedLabel">300 WPM</div>
+
+    <div class="buttons">
+      <button class="primary" id="start">Start</button>
+      <button class="secondary" id="stop" style="display:none">Stop</button>
+    </div>
+  </div>
+
+  <div class="reader" id="reader">
+    <div class="word" id="word"></div>
+  </div>
+
+  <div class="stats">
+    <div id="pos">0</div>
+    <div id="remaining">--:--</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<script>
+const state = {
+  words: [],
+  index: 0,
+  running: false,
+  lastTime: null,
+  acc: 0,
+  wpm: 300
+};
+
+const orp = l => l <= 5 ? 1 : l <= 9 ? 2 : l <= 13 ? 3 : Math.floor(l/2);
+
+const format = w => {
+  const i = orp(w.length);
+  return w.slice(0,i) + '<span class="center">' + (w[i]||'') + '</span>' + w.slice(i+1);
+};
+
+const tokenize = t =>
+  t.replace(/[“”]/g,'"')
+   .replace(/[‘’]/g,"'")
+   .replace(/—|–/g,' — ')
+   .replace(/([.,!?;:])/g,' $1 ')
+   .split(/\s+/).filter(Boolean);
+
+const pauseMult = w => /[.!?]/.test(w) ? 1.8 : /[,;:]/.test(w) ? 1.3 : 1;
+
+function loop(ts){
+  if(!state.running) return;
+  if(!state.lastTime) state.lastTime = ts;
+  const base = 60000/state.wpm;
+  state.acc += ts - state.lastTime;
+  state.lastTime = ts;
+
+  while(state.acc >= base && state.index < state.words.length){
+    const w = state.words[state.index++];
+    word.innerHTML = format(w);
+    state.acc -= base * pauseMult(w);
+    updateStats();
+  }
+
+  if(state.index < state.words.length){
+    requestAnimationFrame(loop);
+  } else stop();
+}
+
+function start(){
+  if(!state.words.length){
+    const t = text.value.trim();
+    if(!t) return;
+    state.words = tokenize(t);
+  }
+  state.running = true;
+  state.lastTime = null;
+  reader.classList.add('active');
+  startBtn.style.display = 'none';
+  stopBtn.style.display = 'block';
+  requestAnimationFrame(loop);
+}
+
+function stop(){
+  state.running = false;
+  state.index = 0;
+  state.acc = 0;
+  reader.classList.remove('active');
+  startBtn.style.display = 'block';
+  stopBtn.style.display = 'none';
+}
+
+function updateStats(){
+  pos.textContent = state.index;
+  const rem = state.words.length - state.index;
+  const mins = rem/state.wpm;
+  remaining.textContent = Math.floor(mins)+':'+Math.floor((mins%1)*60).toString().padStart(2,'0');
+}
+
+speed.oninput = e => {
+  state.wpm = +e.target.value;
+  speedLabel.textContent = state.wpm+' WPM';
+};
+
+startBtn.onclick = start;
+stopBtn.onclick = stop;
+
+file.onchange = async e => {
+  const f = e.target.files[0];
+  if(!f) return;
+  if(f.name.endsWith('.epub')){
+    const zip = await JSZip.loadAsync(await f.arrayBuffer());
+    let txt = '';
+    for(const k of Object.keys(zip.files)){
+      if(k.match(/\.(html|xhtml)/i)){
+        const d = new DOMParser().parseFromString(await zip.files[k].async('text'),'text/html');
+        txt += d.body.textContent+'\n';
+      }
+    }
+    text.value = txt;
+  } else {
+    text.value = await f.text();
+  }
+};
+</script>
+</body>
+</html>
